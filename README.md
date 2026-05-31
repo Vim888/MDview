@@ -1,5 +1,7 @@
 # MDView
 
+![Скриншот](screenshot.png)
+
 Полностью нативный текстовый редактор Markdown файлов для Windows. Без WebView, без зависимостей — только WPF и Markdig.
 
 ## Возможности
