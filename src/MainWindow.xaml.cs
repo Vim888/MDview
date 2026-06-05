@@ -190,6 +190,7 @@ namespace NativeMDView
         private void ScheduleSettingsSave()
         {
             _settingsSaveCts?.Cancel();
+            _settingsSaveCts?.Dispose();
             _settingsSaveCts = new CancellationTokenSource();
             var token = _settingsSaveCts.Token;
             Task.Delay(500, token).ContinueWith(_ =>
@@ -348,19 +349,73 @@ namespace NativeMDView
         private void SchedulePreviewUpdate()
         {
             _previewCts?.Cancel();
+            _previewCts?.Dispose();
             _previewCts = new CancellationTokenSource();
             var token = _previewCts.Token;
             Task.Delay(300, token).ContinueWith(_ =>
             {
                 if (!token.IsCancellationRequested)
                 {
-                    Dispatcher.BeginInvoke(new Action(() => UpdatePreview()));
+                    Dispatcher.BeginInvoke(new Action(() => _ = UpdatePreviewAsync()));
                 }
             }, token);
         }
 
+        private async Task UpdatePreviewAsync()
+        {
+            var savedOffset = PreviewScroll.VerticalOffset;
+            var savedText = Editor.Text;
+            var colors = GetThemeColors(Settings.Theme);
+            var zoom = _zoomLevel;
+
+            Markdig.Syntax.MarkdownDocument? document = null;
+            try
+            {
+                document = await MarkdownRenderer.ParseAsync(savedText);
+            }
+            catch (Exception ex)
+            {
+                ShowRenderError(ex.Message);
+                return;
+            }
+
+            if (Editor.Text != savedText) return;
+
+            try
+            {
+                var elements = MarkdownRenderer.RenderDocument(document, colors, zoom);
+
+                if (Editor.Text != savedText) return;
+
+                PreviewPanel.Children.Clear();
+                foreach (var element in elements)
+                {
+                    PreviewPanel.Children.Add(element);
+                }
+                PreviewScroll.ScrollToVerticalOffset(savedOffset);
+            }
+            catch (Exception ex)
+            {
+                ShowRenderError(ex.Message);
+            }
+        }
+
+        private void ShowRenderError(string message)
+        {
+            PreviewPanel.Children.Clear();
+            var errorTb = new TextBlock
+            {
+                Text = $"Render error: {message}",
+                Foreground = new SolidColorBrush(Color.FromRgb(255, 100, 100)),
+                FontSize = 14 * _zoomLevel,
+                Margin = new Thickness(0, 24, 0, 0)
+            };
+            PreviewPanel.Children.Add(new Border { Child = errorTb });
+        }
+
         private void UpdatePreview()
         {
+            var savedOffset = PreviewScroll.VerticalOffset;
             PreviewPanel.Children.Clear();
 
             try
@@ -384,6 +439,8 @@ namespace NativeMDView
                 };
                 PreviewPanel.Children.Add(new Border { Child = errorTb });
             }
+
+            PreviewScroll.ScrollToVerticalOffset(savedOffset);
         }
 
         private double _zoomLevel = 1.0;
@@ -651,7 +708,7 @@ namespace NativeMDView
 
         private void About_Click(object sender, RoutedEventArgs e)
         {
-            var version = "1.2";
+            var version = "1.3";
             var buildTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
             MessageBox.Show(
                 $"MDView v{version}\n\nBuild: {buildTime}\n\nMarkdown Editor (Fully Native, No WebView)\n\nView Modes:\n  Ctrl+1 - Preview Only\n  Ctrl+2 - Editor Only\n  Ctrl+3 - Split View\n\nCtrl+T - Toggle Theme\nCtrl+P - Cycle Views",
@@ -660,6 +717,11 @@ namespace NativeMDView
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            _previewCts?.Cancel();
+            _previewCts?.Dispose();
+            _settingsSaveCts?.Cancel();
+            _settingsSaveCts?.Dispose();
+
             Settings.Save();
             if (_isModified)
             {

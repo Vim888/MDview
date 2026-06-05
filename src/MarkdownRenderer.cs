@@ -84,20 +84,26 @@ namespace NativeMDView
 
         private void CreateBrushes()
         {
-            BgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Bg));
-            TextBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Text));
-            HeadingBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Heading));
-            LinkBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Link));
-            CodeBgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(CodeBg));
-            CodeTextBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(CodeText));
-            BlockquoteBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Blockquote));
-            BlockquoteBorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(BlockquoteBorder));
-            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Border));
-            TableHeaderBgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(TableHeaderBg));
-            TableAltBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(TableAlt));
-            StrongBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Strong));
-            EmBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Em));
-            DelBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Del));
+            BgBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Bg)));
+            TextBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Text)));
+            HeadingBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Heading)));
+            LinkBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Link)));
+            CodeBgBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(CodeBg)));
+            CodeTextBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(CodeText)));
+            BlockquoteBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Blockquote)));
+            BlockquoteBorderBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(BlockquoteBorder)));
+            BorderBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Border)));
+            TableHeaderBgBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(TableHeaderBg)));
+            TableAltBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(TableAlt)));
+            StrongBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Strong)));
+            EmBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Em)));
+            DelBrush = FreezeBrush(new SolidColorBrush((Color)ColorConverter.ConvertFromString(Del)));
+        }
+
+        private static SolidColorBrush FreezeBrush(SolidColorBrush brush)
+        {
+            if (brush.CanFreeze) brush.Freeze();
+            return brush;
         }
     }
 
@@ -109,7 +115,7 @@ namespace NativeMDView
             .Build();
 
         private static readonly FontFamily MonoFont = new("Cascadia Code, Consolas, Courier New");
-        private static readonly HttpClient _httpClient = new();
+        private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
 
         public static List<UIElement> Render(string markdown, ThemeColors colors, double zoom)
         {
@@ -137,6 +143,48 @@ namespace NativeMDView
             }
 
             var document = Markdown.Parse(markdown, Pipeline);
+
+            foreach (var block in document)
+            {
+                var element = RenderBlock(block, colors, fontSize, zoom, 0);
+                if (element != null)
+                    elements.Add(element);
+            }
+
+            return elements;
+        }
+
+        public static Task<MarkdownDocument> ParseAsync(string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown))
+                return Task.FromResult<MarkdownDocument>(null!);
+            return Task.Run(() => Markdown.Parse(markdown, Pipeline));
+        }
+
+        public static List<UIElement> RenderDocument(MarkdownDocument document, ThemeColors colors, double zoom)
+        {
+            var elements = new List<UIElement>();
+            var fontSize = 14.0 * zoom;
+
+            if (document == null)
+            {
+                var placeholder = new TextBlock
+                {
+                    Text = "Open file or Ctrl + E for write new file...",
+                    Foreground = new SolidColorBrush(Color.FromRgb(128, 128, 128)),
+                    FontSize = 18 * zoom,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 100, 0, 0)
+                };
+                var container = new Border
+                {
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Child = placeholder
+                };
+                elements.Add(container);
+                return elements;
+            }
 
             foreach (var block in document)
             {
@@ -619,13 +667,14 @@ namespace NativeMDView
 
         private static async Task LoadImageAsync(Image image, string imgUrl, string imgAlt, double zoom, ThemeColors colors, TextBlock tb)
         {
+            BitmapImage? bitmap = null;
             try
             {
                 if (imgUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                     imgUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
                     var bytes = await _httpClient.GetByteArrayAsync(imgUrl);
-                    var bitmap = new BitmapImage();
+                    bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     using (var ms = new MemoryStream(bytes))
@@ -634,24 +683,38 @@ namespace NativeMDView
                         bitmap.EndInit();
                     }
                     bitmap.Freeze();
-                    image.Source = bitmap;
                 }
                 else
                 {
-                    var bitmap = new BitmapImage();
+                    bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.UriSource = new Uri(imgUrl, UriKind.RelativeOrAbsolute);
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.EndInit();
                     bitmap.Freeze();
-                    image.Source = bitmap;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                image.Source = null;
-                tb.Inlines.Add(new Run { Text = $"[Image: {imgAlt}]", FontStyle = FontStyles.Italic, Foreground = colors.TextBrush });
+                System.Diagnostics.Debug.WriteLine($"Image load failed for '{imgUrl}': {ex.Message}");
+                bitmap = null;
             }
+
+            var dispatcher = image.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted) return;
+
+            await dispatcher.InvokeAsync(() =>
+            {
+                if (bitmap != null)
+                {
+                    image.Source = bitmap;
+                }
+                else
+                {
+                    image.Source = null;
+                    tb.Inlines.Add(new Run { Text = $"[Image: {imgAlt}]", FontStyle = FontStyles.Italic, Foreground = colors.TextBrush });
+                }
+            });
         }
 
         private static string GetInlineText(Markdig.Syntax.Inlines.Inline inline)
