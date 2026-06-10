@@ -109,13 +109,18 @@ namespace NativeMDView
 
     public static class MarkdownRenderer
     {
-        private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-            .UseAdvancedExtensions()
-            .UseEmojiAndSmiley()
-            .Build();
+        private static readonly Lazy<MarkdownPipeline> _pipeline = new(() =>
+            new MarkdownPipelineBuilder().UseAdvancedExtensions().UseEmojiAndSmiley().Build());
+
+        private static readonly Lazy<HttpClient> _httpClient = new(() =>
+            new HttpClient { Timeout = TimeSpan.FromSeconds(5) });
 
         private static readonly FontFamily MonoFont = new("Cascadia Code, Consolas, Courier New");
-        private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
+
+        public static void Warmup()
+        {
+            _ = _pipeline.Value;
+        }
 
         public static List<UIElement> Render(string markdown, ThemeColors colors, double zoom)
         {
@@ -142,7 +147,7 @@ namespace NativeMDView
                 return elements;
             }
 
-            var document = Markdown.Parse(markdown, Pipeline);
+            var document = Markdown.Parse(markdown, _pipeline.Value);
 
             foreach (var block in document)
             {
@@ -158,7 +163,7 @@ namespace NativeMDView
         {
             if (string.IsNullOrWhiteSpace(markdown))
                 return Task.FromResult<MarkdownDocument>(null!);
-            return Task.Run(() => Markdown.Parse(markdown, Pipeline));
+            return Task.Run(() => Markdown.Parse(markdown, _pipeline.Value));
         }
 
         public static List<UIElement> RenderDocument(MarkdownDocument document, ThemeColors colors, double zoom)
@@ -673,7 +678,7 @@ namespace NativeMDView
                 if (imgUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                     imgUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
-                    var bytes = await _httpClient.GetByteArrayAsync(imgUrl);
+                    var bytes = await _httpClient.Value.GetByteArrayAsync(imgUrl);
                     bitmap = new BitmapImage();
                     bitmap.BeginInit();
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;

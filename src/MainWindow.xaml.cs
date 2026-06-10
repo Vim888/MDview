@@ -35,7 +35,6 @@ namespace NativeMDView
                 _startupFilePath = Path.GetFullPath(args[0]);
             }
             
-            Settings.Load();
             
             ApplyTheme(Settings.Theme);
             
@@ -82,13 +81,13 @@ namespace NativeMDView
             
             _isLoaded = true;
             
-            if (!string.IsNullOrEmpty(_startupFilePath))
+            Dispatcher.BeginInvoke(new Action(async () =>
             {
-                OpenFileByPath(_startupFilePath);
-            }
-            UpdatePreview();
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
+                if (!string.IsNullOrEmpty(_startupFilePath))
+                {
+                    await OpenFileByPath(_startupFilePath);
+                }
+                UpdatePreview();
                 Editor.Focus();
                 Activate();
             }));
@@ -561,16 +560,16 @@ namespace NativeMDView
             UpdatePreview();
         }
 
-        private void OpenFile_Click(object sender, RoutedEventArgs e)
+        private async void OpenFile_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFileDialog { Filter = "Markdown Files (*.md)|*.md|Text Files (*.txt)|*.txt|All Files (*.*)|*.*", DefaultExt = ".md" };
             if (dialog.ShowDialog() == true)
             {
-                OpenFileByPath(dialog.FileName);
+                await OpenFileByPath(dialog.FileName);
             }
         }
 
-        private async void OpenFileByPath(string path)
+        private async Task OpenFileByPath(string path)
         {
             try
             {
@@ -708,7 +707,8 @@ namespace NativeMDView
 
         private void About_Click(object sender, RoutedEventArgs e)
         {
-            var version = "1.3";
+            var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            var version = ver != null ? $"{ver.Major}.{ver.Minor}" : "1.4";
             var buildTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
             MessageBox.Show(
                 $"MDView v{version}\n\nBuild: {buildTime}\n\nMarkdown Editor (Fully Native, No WebView)\n\nView Modes:\n  Ctrl+1 - Preview Only\n  Ctrl+2 - Editor Only\n  Ctrl+3 - Split View\n\nCtrl+T - Toggle Theme\nCtrl+P - Cycle Views",
