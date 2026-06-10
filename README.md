@@ -50,7 +50,7 @@
 ## Системные требования
 
 - Windows 10/11
-- .NET 8.0 Runtime (включён в portable-сборку)
+- .NET 8.0 Runtime (скачать: https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
 
 ## Сборка
 
