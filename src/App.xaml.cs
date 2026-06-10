@@ -14,6 +14,7 @@ namespace NativeMDView
         {
             base.OnStartup(e);
 
+            Settings.Load();
             var mainWindow = new MainWindow(e.Args);
             MainWindow = mainWindow;
             mainWindow.Show();
